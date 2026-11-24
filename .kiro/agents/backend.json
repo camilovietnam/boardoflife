@@ -1,0 +1,49 @@
+{
+  "name": "backend",
+  "description": "Senior Go developer",
+  "prompt": "You are a senior Go developer. You write particularly beautiful and elegant code, easy to read and test, maximizing decoupling and clean code. You use Dependency Injection when it is necessary to keep the code clean",
+  "tools": ["grep","read","execute_bash", "read_file", "fs_write","code","web_search","web_fetch" ],
+  "resources": ["file://backend/**/*", "file://backend/go.mod", "file://.env.skel"],
+  "permissions": {
+    "rules": [
+      {
+        "capability": "shell",
+        "match": [
+          "head *",
+          "tail *",
+          "echo *",
+          "cd *",
+          "cat *",
+          "grep *",
+          "sed *",
+          "mv *",
+          "ls *",
+          "git *",
+          "go *",
+          "gofmt *",
+          "docker *"
+        ],
+        "effect": "allow"
+      },
+      {
+        "capability": "fs_write",
+        "match": [
+          "backend/**",
+        ],
+        "effect": "allow"
+      },
+      {
+        "capability": "fs_read",
+        "effect": "allow"
+      },
+      {
+        "capability": "skill",
+        "effect": "allow"
+      }
+    ],
+    "policies": [
+      "read-only-shell"
+    ]
+  },
+  
+}

@@ -1,0 +1,198 @@
+openapi: 3.0.3
+info:
+  title: Board of Life API
+  version: 0.1.0
+  description: >-
+    Backend API. Authentication uses an opaque session cookie (`session`)
+    issued by `POST /api/auth/login`.
+
+servers:
+  - url: http://localhost:8585
+    description: Local Docker Compose (nginx)
+
+tags:
+  - name: Health
+    description: Liveness checks.
+  - name: Auth
+    description: Login, logout and current-user lookup.
+
+paths:
+  /api/health:
+    get:
+      tags: [Health]
+      summary: Liveness check
+      operationId: getHealth
+      responses:
+        "200":
+          description: The service is up.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Health"
+
+  /api/auth/login:
+    post:
+      tags: [Auth]
+      summary: Log in with username and password
+      description: >-
+        Usernames are case-insensitive. On success a session cookie is set.
+        Request bodies are limited to 4 KiB.
+      operationId: login
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/LoginRequest"
+      responses:
+        "200":
+          description: Authenticated.
+          headers:
+            Set-Cookie:
+              description: >-
+                `session=<token>; Path=/; Max-Age=604800; HttpOnly;
+                SameSite=Lax` (plus `Secure` when COOKIE_SECURE=true).
+              schema:
+                type: string
+            Cache-Control:
+              schema:
+                type: string
+                example: no-store
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/User"
+        "400":
+          description: Malformed JSON, unknown fields, or missing username/password.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: Invalid username or password (deliberately generic).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "413":
+          description: Request body too large.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "500":
+          description: Unexpected server error.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /api/auth/logout:
+    post:
+      tags: [Auth]
+      summary: Log out
+      description: >-
+        Deletes the session server-side and clears the cookie. Idempotent:
+        succeeds even without a valid session.
+      operationId: logout
+      responses:
+        "204":
+          description: Logged out; the session cookie is cleared.
+          headers:
+            Set-Cookie:
+              description: Expired `session` cookie (`Max-Age=0`).
+              schema:
+                type: string
+            Cache-Control:
+              schema:
+                type: string
+                example: no-store
+        "500":
+          description: Unexpected server error.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /api/me:
+    get:
+      tags: [Auth]
+      summary: Get the authenticated user
+      operationId: getMe
+      security:
+        - session: []
+      responses:
+        "200":
+          description: The current user.
+          headers:
+            Cache-Control:
+              schema:
+                type: string
+                example: no-store
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/User"
+        "401":
+          description: Missing, unknown or expired session.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "500":
+          description: Unexpected server error.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+components:
+  securitySchemes:
+    session:
+      type: apiKey
+      in: cookie
+      name: session
+      description: Opaque session token set by `POST /api/auth/login`.
+
+  schemas:
+    Health:
+      type: object
+      required: [status]
+      properties:
+        status:
+          type: string
+          example: ok
+    LoginRequest:
+      type: object
+      additionalProperties: false
+      required: [username, password]
+      properties:
+        username:
+          type: string
+          minLength: 1
+          example: admin
+        password:
+          type: string
+          format: password
+          minLength: 1
+    User:
+      type: object
+      required: [id, username, role]
+      properties:
+        id:
+          type: integer
+          format: int64
+          example: 1
+        username:
+          type: string
+          example: admin
+        role:
+          type: string
+          enum: [admin, user]
+    Error:
+      type: object
+      required: [error]
+      properties:
+        error:
+          type: string
+          example: unauthorized

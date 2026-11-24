@@ -1,0 +1,45 @@
+services:
+  nginx:
+    image: nginx:1.27-alpine
+    ports:
+      - "8585:80"
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/conf.d/default.conf:ro
+    depends_on:
+      - frontend
+      - backend
+
+  frontend:
+    build: ./frontend
+
+  backend:
+    build: ./backend
+    environment:
+      DATABASE_URL: postgres://boardoflife:boardoflife@db:5432/boardoflife?sslmode=disable
+      # Local dev only: never reuse these values outside a developer machine.
+      ADMIN_USERNAME: admin
+      ADMIN_PASSWORD: change-me-please
+      COOKIE_SECURE: "false"
+    depends_on:
+      db:
+        condition: service_healthy
+
+  # Local development credentials only.
+  db:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_USER: boardoflife
+      POSTGRES_PASSWORD: boardoflife
+      POSTGRES_DB: boardoflife
+    volumes:
+      - db-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U boardoflife -d boardoflife"]
+      interval: 3s
+      timeout: 3s
+      retries: 10
+    ports:
+       - "54320:5432"
+
+volumes:
+  db-data:
