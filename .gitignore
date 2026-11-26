@@ -1,8 +1,6 @@
 .env
 node_modules
 vendor
-
-backend/backend
-
-
 frontend/dist
+.idea
+backend/backend
