@@ -14,6 +14,12 @@ type ErrorBody struct {
 	Error string `json:"error"`
 }
 
+// ValidationBody is the JSON shape of a 400 caused by invalid fields.
+type ValidationBody struct {
+	Error  string            `json:"error"`
+	Fields map[string]string `json:"fields"`
+}
+
 // WriteJSON writes v as a JSON response with the given status.
 func WriteJSON(w http.ResponseWriter, status int, v any) {
 	w.Header().Set("Content-Type", "application/json")
@@ -26,6 +32,11 @@ func WriteJSON(w http.ResponseWriter, status int, v any) {
 // WriteError writes {"error": message} with the given status.
 func WriteError(w http.ResponseWriter, status int, message string) {
 	WriteJSON(w, status, ErrorBody{Error: message})
+}
+
+// WriteValidationError writes a 400 listing what is wrong per field.
+func WriteValidationError(w http.ResponseWriter, fields map[string]string) {
+	WriteJSON(w, http.StatusBadRequest, ValidationBody{Error: "validation failed", Fields: fields})
 }
 
 // DecodeJSON reads a single JSON object of at most maxBytes into dst.

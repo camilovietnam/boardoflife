@@ -15,6 +15,11 @@ tags:
     description: Liveness checks.
   - name: Auth
     description: Login, logout and current-user lookup.
+  - name: Books
+    description: >-
+      The authenticated user's reading list. Users only ever see and modify
+      their own books; another user's book id answers 404. All responses are
+      `Cache-Control: no-store`. Includes catalogue lookup to prefill books.
 
 paths:
   /api/health:
@@ -146,6 +151,350 @@ paths:
               schema:
                 $ref: "#/components/schemas/Error"
 
+  /api/books:
+    get:
+      tags: [Books]
+      summary: List the user's books
+      description: >-
+        Sorted by `updated_at` descending, then `id` descending. `counts`
+        are the user's totals per status and ignore `status` and `q`. A page
+        past the end returns 200 with empty `items`.
+      operationId: listBooks
+      security:
+        - session: []
+      parameters:
+        - name: status
+          in: query
+          description: Only books with this status.
+          schema:
+            $ref: "#/components/schemas/BookStatus"
+        - name: q
+          in: query
+          description: >-
+            Case-insensitive substring search in name and author (at most 300
+            characters; `%`, `_` and `\` match literally).
+          schema:
+            type: string
+            maxLength: 300
+        - name: page
+          in: query
+          description: 1-based page number.
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 1000000
+            default: 1
+        - name: page_size
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 50
+            default: 12
+      responses:
+        "200":
+          description: One page of books.
+          headers:
+            Cache-Control:
+              schema:
+                type: string
+                example: no-store
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BookList"
+        "400":
+          description: Invalid `status`, `q`, `page` or `page_size`.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ValidationError"
+        "401":
+          description: Missing, unknown or expired session.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "500":
+          description: Unexpected server error.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+    post:
+      tags: [Books]
+      summary: Create a book
+      description: >-
+        Normalization: `name` and `author` are trimmed; `progress` defaults to
+        0, is forced to 0 for `to_read` and to 100 for `finished`. Request
+        bodies are limited to 8 KiB.
+      operationId: createBook
+      security:
+        - session: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/BookInput"
+      responses:
+        "201":
+          description: Created.
+          headers:
+            Location:
+              description: URL of the new book.
+              schema:
+                type: string
+                example: /api/books/42
+            Cache-Control:
+              schema:
+                type: string
+                example: no-store
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Book"
+        "400":
+          description: Malformed JSON, unknown fields, or invalid field values.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ValidationError"
+        "401":
+          description: Missing, unknown or expired session.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "413":
+          description: Request body too large.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "500":
+          description: Unexpected server error.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /api/books/lookup:
+    get:
+      tags: [Books]
+      summary: Search public catalogues for books
+      description: >-
+        Searches Google Books and, only when it fails or finds nothing, Open
+        Library. Results can be used to prefill `POST /api/books`
+        (`name`, `author`, `description`, `cover_url`, `external_id`). Cover
+        URLs are always https. Results are cached for 10 minutes; each user
+        may perform 30 lookups per minute.
+      operationId: lookupBooks
+      security:
+        - session: []
+      parameters:
+        - name: q
+          in: query
+          required: true
+          description: Search text (trimmed).
+          schema:
+            type: string
+            minLength: 2
+            maxLength: 200
+        - name: limit
+          in: query
+          description: Maximum number of results.
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 20
+            default: 8
+      responses:
+        "200":
+          description: Matching catalogue entries (possibly none).
+          headers:
+            Cache-Control:
+              schema:
+                type: string
+                example: no-store
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BookLookupList"
+        "400":
+          description: Missing or out-of-range `q` or `limit`.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ValidationError"
+        "401":
+          description: Missing, unknown or expired session.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "429":
+          description: Lookup rate limit exceeded.
+          headers:
+            Retry-After:
+              description: Seconds until the user may search again.
+              schema:
+                type: integer
+                minimum: 1
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "500":
+          description: Unexpected server error.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "502":
+          description: No catalogue could answer (upstream failure, timeout or quota).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /api/books/{id}:
+    get:
+      tags: [Books]
+      summary: Get a book
+      operationId: getBook
+      security:
+        - session: []
+      parameters:
+        - $ref: "#/components/parameters/BookId"
+      responses:
+        "200":
+          description: The book.
+          headers:
+            Cache-Control:
+              schema:
+                type: string
+                example: no-store
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Book"
+        "401":
+          description: Missing, unknown or expired session.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: No such book for this user (also for other users' books and malformed ids).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "500":
+          description: Unexpected server error.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+    put:
+      tags: [Books]
+      summary: Replace a book
+      description: >-
+        Full replacement of the writable fields (same normalization as
+        create); refreshes `updated_at`. Omitted `progress` or `rating` reset
+        to 0 / null.
+      operationId: replaceBook
+      security:
+        - session: []
+      parameters:
+        - $ref: "#/components/parameters/BookId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/BookInput"
+      responses:
+        "200":
+          description: The updated book.
+          headers:
+            Cache-Control:
+              schema:
+                type: string
+                example: no-store
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Book"
+        "400":
+          description: Malformed JSON, unknown fields, or invalid field values.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ValidationError"
+        "401":
+          description: Missing, unknown or expired session.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: No such book for this user.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "413":
+          description: Request body too large.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "500":
+          description: Unexpected server error.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+    delete:
+      tags: [Books]
+      summary: Delete a book
+      operationId: deleteBook
+      security:
+        - session: []
+      parameters:
+        - $ref: "#/components/parameters/BookId"
+      responses:
+        "204":
+          description: Deleted.
+          headers:
+            Cache-Control:
+              schema:
+                type: string
+                example: no-store
+        "401":
+          description: Missing, unknown or expired session.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: No such book for this user.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "500":
+          description: Unexpected server error.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
 components:
   securitySchemes:
     session:
@@ -153,6 +502,16 @@ components:
       in: cookie
       name: session
       description: Opaque session token set by `POST /api/auth/login`.
+
+  parameters:
+    BookId:
+      name: id
+      in: path
+      required: true
+      schema:
+        type: integer
+        format: int64
+        minimum: 1
 
   schemas:
     Health:
@@ -196,3 +555,179 @@ components:
         error:
           type: string
           example: unauthorized
+    ValidationError:
+      type: object
+      required: [error, fields]
+      properties:
+        error:
+          type: string
+          example: validation failed
+        fields:
+          type: object
+          description: Problem per offending field or query parameter.
+          additionalProperties:
+            type: string
+          example:
+            rating: must be null or a multiple of 0.5 between 1 and 5
+    BookStatus:
+      type: string
+      enum: [to_read, reading, finished]
+    Book:
+      type: object
+      required: [id, name, author, status, progress, rating, cover_url, description, external_id, created_at, updated_at]
+      properties:
+        id:
+          type: integer
+          format: int64
+          example: 42
+        name:
+          type: string
+          example: Dune
+        author:
+          type: string
+          example: Frank Herbert
+        status:
+          $ref: "#/components/schemas/BookStatus"
+        progress:
+          type: integer
+          minimum: 0
+          maximum: 100
+        rating:
+          type: number
+          nullable: true
+          minimum: 1
+          maximum: 5
+          multipleOf: 0.5
+          description: Stars in steps of 0.5; null when unrated.
+          example: 4.5
+        cover_url:
+          type: string
+          format: uri
+          nullable: true
+          maxLength: 2000
+          pattern: "^https://"
+          description: Absolute https URL of the cover image.
+        description:
+          type: string
+          nullable: true
+          maxLength: 5000
+        external_id:
+          type: string
+          nullable: true
+          maxLength: 100
+          description: Identifier in the catalogue the book was picked from (e.g. a Google Books volume id).
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+    BookInput:
+      type: object
+      additionalProperties: false
+      required: [name, author, status]
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 300
+          description: Trimmed; must not be blank.
+        author:
+          type: string
+          minLength: 1
+          maxLength: 300
+          description: Trimmed; must not be blank.
+        status:
+          $ref: "#/components/schemas/BookStatus"
+        progress:
+          type: integer
+          minimum: 0
+          maximum: 100
+          default: 0
+          description: Forced to 0 for `to_read` and 100 for `finished`.
+        rating:
+          type: number
+          nullable: true
+          minimum: 1
+          maximum: 5
+          multipleOf: 0.5
+        cover_url:
+          type: string
+          format: uri
+          nullable: true
+          maxLength: 2000
+          pattern: "^https://"
+          description: Absolute https URL of the cover image. Blank is stored as null.
+        description:
+          type: string
+          nullable: true
+          maxLength: 5000
+          description: Trimmed; blank is stored as null.
+        external_id:
+          type: string
+          nullable: true
+          maxLength: 100
+          description: Identifier in the catalogue the book was picked from (e.g. a Google Books volume id).
+    BookLookupItem:
+      type: object
+      required: [external_id, name, author, description, cover_url, published_year]
+      properties:
+        external_id:
+          type: string
+          example: zyTCAlFPjgYC
+        name:
+          type: string
+          example: Dune
+        author:
+          type: string
+          description: Authors joined with ", "; "Unknown author" when none.
+          example: Frank Herbert
+        description:
+          type: string
+          nullable: true
+        cover_url:
+          type: string
+          format: uri
+          nullable: true
+          description: https URL.
+        published_year:
+          type: integer
+          nullable: true
+          example: 1965
+    BookLookupList:
+      type: object
+      required: [items]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/BookLookupItem"
+    BookCounts:
+      type: object
+      required: [to_read, reading, finished]
+      properties:
+        to_read:
+          type: integer
+        reading:
+          type: integer
+        finished:
+          type: integer
+    BookList:
+      type: object
+      required: [items, page, page_size, total, total_pages, counts]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/Book"
+        page:
+          type: integer
+        page_size:
+          type: integer
+        total:
+          type: integer
+          description: Books matching the filters, across all pages.
+        total_pages:
+          type: integer
+        counts:
+          $ref: "#/components/schemas/BookCounts"

@@ -12,6 +12,10 @@ type config struct {
 	CookieSecure  bool
 	AdminUsername string
 	AdminPassword string
+
+	// GoogleBooksAPIKey is optional; without it Google Books is queried
+	// anonymously (and is subject to a much tighter quota).
+	GoogleBooksAPIKey string
 }
 
 func loadConfig() (config, error) {
@@ -19,6 +23,8 @@ func loadConfig() (config, error) {
 		DatabaseURL:   os.Getenv("DATABASE_URL"),
 		AdminUsername: os.Getenv("ADMIN_USERNAME"),
 		AdminPassword: os.Getenv("ADMIN_PASSWORD"),
+
+		GoogleBooksAPIKey: os.Getenv("GOOGLE_BOOKS_API_KEY"),
 	}
 	if v := os.Getenv("COOKIE_SECURE"); v != "" {
 		secure, err := strconv.ParseBool(v)

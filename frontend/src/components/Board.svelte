@@ -1,5 +1,6 @@
 <script>
   import Login from './Login.svelte';
+  import Books from './Books.svelte';
 
   // The four columns are the same DOM elements on the login page and on the board.
   // `phase` drives their geometry:
@@ -125,10 +126,16 @@
 
       {#if panelAt === i}
         <section id="panel" class="panel" aria-label={areas[i].label}>
-          <div class="panel-content">
-            <h1>{areas[i].label}</h1>
-            <p>Nothing here yet.</p>
-          </div>
+          {#if areas[i].id === 'books'}
+            <div class="panel-content scroll">
+              <Books />
+            </div>
+          {:else}
+            <div class="panel-content">
+              <h1>{areas[i].label}</h1>
+              <p>Nothing here yet.</p>
+            </div>
+          {/if}
         </section>
       {/if}
     {/each}
@@ -331,6 +338,13 @@
     width: calc(100vw - 4 * var(--collapsed));
     padding: 3rem;
     box-sizing: border-box;
+  }
+
+  /* Books: the content scrolls inside the fixed-width panel. */
+  .panel-content.scroll {
+    height: 100%;
+    overflow-y: auto;
+    padding: 2rem 2.5rem 4.5rem;
   }
 
   .panel-content h1 {

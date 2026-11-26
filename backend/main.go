@@ -13,12 +13,17 @@ import (
 	"github.com/go-chi/chi/v5/middleware"
 
 	"boardoflife/backend/internal/auth"
+	"boardoflife/backend/internal/books"
+	"boardoflife/backend/internal/booksearch"
 	"boardoflife/backend/internal/httpx"
+	"boardoflife/backend/internal/ratelimit"
 )
 
 const (
 	sessionTTL    = 7 * 24 * time.Hour
 	purgeInterval = time.Hour
+
+	lookupsPerMinute = 30
 )
 
 func main() {
@@ -54,9 +59,17 @@ func run() error {
 	bootstrapAdmin(ctx, authSvc, cfg)
 	go purgeExpiredSessions(ctx, authSvc)
 
+	httpClient := booksearch.NewHTTPClient()
+	searcher := booksearch.NewService(
+		booksearch.NewGoogle(httpClient, booksearch.GoogleBooksURL, cfg.GoogleBooksAPIKey),
+		booksearch.NewOpenLibrary(httpClient, booksearch.OpenLibraryURL),
+	)
+	limiter := ratelimit.New[int64](lookupsPerMinute, time.Minute)
+	booksHandler := books.NewHandler(books.NewSQLStore(db), authSvc.RequireAuth, searcher, limiter)
+
 	srv := &http.Server{
 		Addr:              ":8080",
-		Handler:           newRouter(auth.NewHandler(authSvc, cfg.CookieSecure)),
+		Handler:           newRouter(auth.NewHandler(authSvc, cfg.CookieSecure), booksHandler),
 		ReadHeaderTimeout: 10 * time.Second,
 	}
 	go func() {
@@ -73,7 +86,7 @@ func run() error {
 	return nil
 }
 
-func newRouter(authHandler *auth.Handler) http.Handler {
+func newRouter(authHandler *auth.Handler, booksHandler *books.Handler) http.Handler {
 	r := chi.NewRouter()
 	r.Use(middleware.Recoverer, accessLog)
 	r.NotFound(func(w http.ResponseWriter, _ *http.Request) {
@@ -86,6 +99,7 @@ func newRouter(authHandler *auth.Handler) http.Handler {
 	r.Route("/api", func(r chi.Router) {
 		r.Get("/health", health)
 		authHandler.Routes(r)
+		booksHandler.Routes(r)
 	})
 	return r
 }

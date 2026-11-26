@@ -21,6 +21,12 @@ func UserFrom(ctx context.Context) (User, bool) {
 	return u, ok
 }
 
+// WithUser returns a copy of ctx carrying user, as RequireAuth does. It lets
+// other packages' tests stand in for the real authentication middleware.
+func WithUser(ctx context.Context, user User) context.Context {
+	return context.WithValue(ctx, ctxKey{}, user)
+}
+
 // RequireAuth rejects requests without a valid session (401) and otherwise
 // stores the user in the request context.
 func (s *Service) RequireAuth(next http.Handler) http.Handler {
@@ -40,7 +46,7 @@ func (s *Service) RequireAuth(next http.Handler) http.Handler {
 			httpx.WriteError(w, http.StatusInternalServerError, "internal server error")
 			return
 		}
-		next.ServeHTTP(w, r.WithContext(context.WithValue(r.Context(), ctxKey{}, user)))
+		next.ServeHTTP(w, r.WithContext(WithUser(r.Context(), user)))
 	})
 }
 
