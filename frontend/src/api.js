@@ -128,6 +128,16 @@ export function deleteBook(id) {
   return requestWithFields(`/api/books/${encodeURIComponent(id)}`, { method: 'DELETE' });
 }
 
+/** -> { health: 0..10 (0.5 steps), max, last_updated } ; 404 for an unknown section. */
+export function getHealthbar(section, { signal } = {}) {
+  return requestWithFields(`/api/healthbars/${encodeURIComponent(section)}`, { method: 'GET', signal });
+}
+
+/** Not used by the UI yet. */
+export function updateHealthbar(section, health) {
+  return requestWithFields(`/api/healthbars/${encodeURIComponent(section)}`, { method: 'PUT', body: { health } });
+}
+
 export function logout() {
   return request('/api/auth/logout', { method: 'POST', notifyUnauthorized: false });
 }

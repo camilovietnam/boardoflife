@@ -6,6 +6,7 @@
   import Pagination from './Pagination.svelte';
   import BookForm from './BookForm.svelte';
   import BookCover from './BookCover.svelte';
+  import HealthBar from './HealthBar.svelte';
 
   const PAGE_SIZE = 12;
   const TABS = [
@@ -181,6 +182,7 @@
     <div>
       <p class="eyebrow">Reading journal</p>
       <h1 id="books-title">Books</h1>
+      <HealthBar section="books" label="Books" />
     </div>
     <button type="button" class="add" bind:this={addBtn} onclick={(e) => openForm(null, e)}>
       {@render icon('plus')} Add book

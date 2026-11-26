@@ -99,6 +99,8 @@ All endpoints are documented in [`backend/docs/openapi.yaml`](backend/docs/opena
 | PUT | `/api/books/{id}` | Full replace. Omitted optional fields reset to defaults |
 | DELETE | `/api/books/{id}` | 204 |
 | GET | `/api/books/lookup` | Search book metadata (`q`, `limit`) |
+| GET | `/api/healthbars/{section}` | Health 0 to 10 (steps of 0.5). Created at 10 on first read. Unknown section is 404 |
+| PUT | `/api/healthbars/{section}` | Set health to an absolute value, e.g. `{"health": 7.5}` |
 
 Errors are JSON: `{"error": "message"}`, and validation errors add `"fields": {"name": "message"}`.
 

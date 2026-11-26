@@ -15,6 +15,7 @@ import (
 	"boardoflife/backend/internal/auth"
 	"boardoflife/backend/internal/books"
 	"boardoflife/backend/internal/booksearch"
+	"boardoflife/backend/internal/healthbars"
 	"boardoflife/backend/internal/httpx"
 	"boardoflife/backend/internal/ratelimit"
 )
@@ -67,9 +68,11 @@ func run() error {
 	limiter := ratelimit.New[int64](lookupsPerMinute, time.Minute)
 	booksHandler := books.NewHandler(books.NewSQLStore(db), authSvc.RequireAuth, searcher, limiter)
 
+	healthbarsHandler := healthbars.NewHandler(healthbars.NewSQLStore(db), authSvc.RequireAuth)
+
 	srv := &http.Server{
 		Addr:              ":8080",
-		Handler:           newRouter(auth.NewHandler(authSvc, cfg.CookieSecure), booksHandler),
+		Handler:           newRouter(auth.NewHandler(authSvc, cfg.CookieSecure), booksHandler, healthbarsHandler),
 		ReadHeaderTimeout: 10 * time.Second,
 	}
 	go func() {
@@ -86,7 +89,7 @@ func run() error {
 	return nil
 }
 
-func newRouter(authHandler *auth.Handler, booksHandler *books.Handler) http.Handler {
+func newRouter(authHandler *auth.Handler, booksHandler *books.Handler, healthbarsHandler *healthbars.Handler) http.Handler {
 	r := chi.NewRouter()
 	r.Use(middleware.Recoverer, accessLog)
 	r.NotFound(func(w http.ResponseWriter, _ *http.Request) {
@@ -100,6 +103,7 @@ func newRouter(authHandler *auth.Handler, booksHandler *books.Handler) http.Hand
 		r.Get("/health", health)
 		authHandler.Routes(r)
 		booksHandler.Routes(r)
+		healthbarsHandler.Routes(r)
 	})
 	return r
 }

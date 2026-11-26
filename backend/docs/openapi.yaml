@@ -20,6 +20,11 @@ tags:
       The authenticated user's reading list. Users only ever see and modify
       their own books; another user's book id answers 404. All responses are
       `Cache-Control: no-store`. Includes catalogue lookup to prefill books.
+  - name: Healthbars
+    description: >-
+      One health bar per life area (section) for the authenticated user.
+      Health is 0 to 10 in steps of 0.5. Users only ever see and modify their
+      own bars. All responses are `Cache-Control: no-store`.
 
 paths:
   /api/health:
@@ -495,6 +500,111 @@ paths:
               schema:
                 $ref: "#/components/schemas/Error"
 
+  /api/healthbars/{section}:
+    get:
+      tags: [Healthbars]
+      summary: Get a health bar
+      description: >-
+        The bar is created on first read with full health (10) and
+        `last_updated` set to now.
+      operationId: getHealthbar
+      security:
+        - session: []
+      parameters:
+        - $ref: "#/components/parameters/HealthbarSection"
+      responses:
+        "200":
+          description: The health bar.
+          headers:
+            Cache-Control:
+              schema:
+                type: string
+                example: no-store
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Healthbar"
+        "401":
+          description: Missing, unknown or expired session.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: Unknown section.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "500":
+          description: Unexpected server error.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+    put:
+      tags: [Healthbars]
+      summary: Set a health bar
+      description: >-
+        Sets health to the given absolute value (creating the bar if needed)
+        and sets `last_updated` to now. Request bodies are limited to 1 KiB.
+      operationId: setHealthbar
+      security:
+        - session: []
+      parameters:
+        - $ref: "#/components/parameters/HealthbarSection"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/HealthbarInput"
+      responses:
+        "200":
+          description: The updated health bar.
+          headers:
+            Cache-Control:
+              schema:
+                type: string
+                example: no-store
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Healthbar"
+        "400":
+          description: Malformed JSON, unknown fields, or `health` missing, not a number, outside 0..10 or not a multiple of 0.5.
+          content:
+            application/json:
+              schema:
+                oneOf:
+                  - $ref: "#/components/schemas/ValidationError"
+                  - $ref: "#/components/schemas/Error"
+        "401":
+          description: Missing, unknown or expired session.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: Unknown section.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "413":
+          description: Request body too large.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "500":
+          description: Unexpected server error.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
 components:
   securitySchemes:
     session:
@@ -504,6 +614,14 @@ components:
       description: Opaque session token set by `POST /api/auth/login`.
 
   parameters:
+    HealthbarSection:
+      name: section
+      in: path
+      required: true
+      description: Life area of the health bar.
+      schema:
+        type: string
+        enum: [books, exercise, learning, mindfulness]
     BookId:
       name: id
       in: path
@@ -731,3 +849,31 @@ components:
           type: integer
         counts:
           $ref: "#/components/schemas/BookCounts"
+    Healthbar:
+      type: object
+      required: [health, max, last_updated]
+      properties:
+        health:
+          type: number
+          minimum: 0
+          maximum: 10
+          multipleOf: 0.5
+          example: 7.5
+        max:
+          type: integer
+          example: 10
+        last_updated:
+          type: string
+          format: date-time
+          description: When health was last changed (or the bar was created).
+    HealthbarInput:
+      type: object
+      additionalProperties: false
+      required: [health]
+      properties:
+        health:
+          type: number
+          minimum: 0
+          maximum: 10
+          multipleOf: 0.5
+          example: 7.5
